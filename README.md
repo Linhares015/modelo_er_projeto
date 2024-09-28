@@ -367,6 +367,182 @@ O objetivo deste desafio é refinar o modelo lógico de banco de dados para aten
 
 Este projeto é uma prática abrangente de modelagem e manipulação de dados em um cenário de e-commerce. A abordagem proposta permite implementar um banco de dados robusto e eficiente, além de fornecer insights úteis através de consultas SQL complexas.
 
+# Projeto de Índices e Procedures em Banco de Dados
+
+## Parte 1 – Criando Índices no Banco de Dados
+
+Neste projeto, o foco é a otimização de consultas (queries) em um cenário de "Company", utilizando a criação de índices para melhorar a performance das buscas. As consultas definidas para recuperação de informações vão nortear a escolha e aplicação dos índices nas tabelas do banco de dados.
+
+### Objetivo da Criação de Índices
+
+A criação de índices deve ser realizada com base nos seguintes critérios:
+- Dados mais acessados: Quais colunas são frequentemente usadas em consultas `SELECT`, `JOIN`, ou como filtro em `WHERE`.
+- Dados mais relevantes no contexto: Quais informações são críticas para a performance do banco de dados.
+  
+A função dos índices é acelerar a busca e recuperação dos dados no SGBD (Sistema de Gerenciamento de Banco de Dados). No entanto, índices também consomem espaço e afetam o desempenho de operações de escrita (`INSERT`, `UPDATE`, `DELETE`). Portanto, devem ser criados apenas para as colunas realmente necessárias.
+
+### Perguntas e Índices Criados
+
+1. **Qual o departamento com maior número de pessoas?**
+   - **Query**: Consulta que faz uma contagem de empregados por departamento e ordena para encontrar o maior.
+   - **Índice Sugerido**: Índice na coluna `departamento_id` da tabela de empregados para agilizar a contagem e agrupamento.
+     - **Tipo de Índice**: `B-TREE`, devido à necessidade de ordenação e contagem dos dados.
+   
+   <details>
+   <summary>Script de Criação do Índice</summary>
+
+   ```sql
+   CREATE INDEX idx_empregados_departamento ON empregados(departamento_id) USING BTREE;
+   ```
+
+   </details>
+
+2. **Quais são os departamentos por cidade?**
+   - **Query**: Recupera uma lista de departamentos junto com a cidade onde estão localizados.
+   - **Índice Sugerido**: Índice na coluna `cidade_id` da tabela de departamentos para melhorar a busca e a junção de dados entre departamentos e cidades.
+     - **Tipo de Índice**: `B-TREE`, pois será utilizado para buscas e junções de dados.
+   
+   <details>
+   <summary>Script de Criação do Índice</summary>
+
+   ```sql
+   CREATE INDEX idx_departamentos_cidade ON departamentos(cidade_id) USING BTREE;
+   ```
+
+   </details>
+
+3. **Relação de empregados por departamento**
+   - **Query**: Lista todos os empregados de cada departamento.
+   - **Índice Sugerido**: Índice na coluna `departamento_id` da tabela de empregados (aproveitando o índice já criado para a primeira pergunta).
+   
+### Justificativas para os Índices Criados
+
+- A coluna `departamento_id` é crucial para consultas que agrupam empregados por departamento, tornando-a uma candidata perfeita para um índice `B-TREE`.
+- A coluna `cidade_id` na tabela de departamentos é frequentemente usada para relacionar cidades e departamentos, o que justifica a criação de um índice `B-TREE`.
+  
+### Exemplos de Consultas SQL
+
+<details>
+<summary>1. Consulta para encontrar o departamento com maior número de pessoas</summary>
+
+```sql
+SELECT 
+    departamento_id,
+    COUNT(empregado_id) AS total_empregados
+FROM 
+    empregados
+GROUP BY 
+    departamento_id
+ORDER BY 
+    total_empregados DESC
+LIMIT 1;
+```
+
+</details>
+
+<details>
+<summary>2. Consulta para listar departamentos por cidade</summary>
+
+```sql
+SELECT 
+    d.nome_departamento,
+    c.nome_cidade
+FROM 
+    departamentos d
+JOIN 
+    cidades c ON d.cidade_id = c.cidade_id;
+```
+
+</details>
+
+<details>
+<summary>3. Relação de empregados por departamento</summary>
+
+```sql
+SELECT 
+    e.nome_empregado,
+    d.nome_departamento
+FROM 
+    empregados e
+JOIN 
+    departamentos d ON e.departamento_id = d.departamento_id;
+```
+
+</details>
+
+---
+
+## Parte 2 – Utilização de Procedures para Manipulação de Dados
+
+O objetivo desta parte é criar uma `procedure` que realize operações de inserção, atualização e remoção de dados no banco de dados, baseando-se em uma variável de controle para determinar qual ação executar.
+
+### Estrutura da Procedure
+
+A procedure deve conter:
+- Instruções para **inserção**, **atualização** e **remoção** de dados, encapsuladas em estruturas condicionais como `CASE` ou `IF`.
+- Uma variável de controle para selecionar a operação desejada: 
+  - **1 – SELECT**
+  - **2 – UPDATE**
+  - **3 – DELETE**
+
+### Exemplo de Procedure
+
+<details>
+<summary>Script SQL para a Criação da Procedure</summary>
+
+```sql
+DELIMITER //
+
+CREATE PROCEDURE manipula_dados(
+    IN acao INT,
+    IN id INT,
+    IN nome VARCHAR(100),
+    IN departamento_id INT
+)
+BEGIN
+    CASE acao
+        WHEN 1 THEN -- SELECT
+            SELECT * FROM empregados WHERE empregado_id = id;
+        WHEN 2 THEN -- UPDATE
+            UPDATE empregados SET nome = nome, departamento_id = departamento_id WHERE empregado_id = id;
+        WHEN 3 THEN -- DELETE
+            DELETE FROM empregados WHERE empregado_id = id;
+        ELSE
+            SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Ação inválida';
+    END CASE;
+END //
+
+DELIMITER ;
+```
+
+</details>
+
+### Como Utilizar a Procedure
+
+- **Para Selecionar um Empregado**: 
+   ```sql
+   CALL manipula_dados(1, 10, NULL, NULL);
+   ```
+   Retorna o registro do empregado com `id = 10`.
+
+- **Para Atualizar um Empregado**: 
+   ```sql
+   CALL manipula_dados(2, 10, 'Novo Nome', 3);
+   ```
+   Atualiza o nome do empregado e seu departamento.
+
+- **Para Deletar um Empregado**: 
+   ```sql
+   CALL manipula_dados(3, 10, NULL, NULL);
+   ```
+   Remove o registro do empregado com `id = 10`.
+
+---
+
+## Conclusão
+
+Neste projeto, trabalhamos com a criação de índices para otimizar consultas de um cenário "Company", levando em consideração o acesso e relevância dos dados. Além disso, desenvolvemos uma `procedure` flexível para manipulação de dados, que permite operações de `SELECT`, `UPDATE` e `DELETE` de forma dinâmica.
+
 ## Autor
 
 Este projeto foi desenvolvido como parte de um desafio de modelagem de banco de dados para e-commerce, seguindo diretrizes propostas por um expert em modelagem de dados.
