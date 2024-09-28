@@ -730,6 +730,147 @@ Gatilhos (ou triggers) são utilizados para automatizar ações no banco de dado
 
 Este projeto aborda a criação de views para facilitar o acesso a dados sensíveis e melhorar a performance de consultas, ao mesmo tempo em que define regras de acesso personalizadas para diferentes tipos de usuários. Além disso, são implementados gatilhos (triggers) para garantir a integridade dos dados durante operações de remoção e atualização.
 
+# Projeto de Transações, Procedures, Backup e Recovery no MySQL
+
+## PARTE 1 – Trabalhando com Transações
+
+O objetivo desta etapa do projeto é praticar o uso de transações no MySQL para realizar operações de consulta e modificação de dados no banco de dados. Transações são usadas para garantir que um conjunto de operações no banco de dados seja executado de forma atômica, ou seja, todas as operações são concluídas com sucesso ou nenhuma alteração é realizada, garantindo a consistência dos dados.
+
+### Passos para a Criação de Transações
+
+1. **Desabilitar o Autocommit**
+   - Antes de iniciar uma transação, é necessário desabilitar o autocommit no MySQL. Isso impede que cada instrução SQL seja confirmada automaticamente.
+   - **Exemplo de Código**:
+   
+   ```sql
+   SET autocommit = 0;
+   START TRANSACTION;
+   ```
+
+2. **Executar Statements Dentro da Transação**
+   - Realizar operações de `INSERT`, `UPDATE` ou `DELETE` dentro da transação para modificar dados de forma controlada.
+   - **Exemplo de Código**:
+   
+   ```sql
+   -- Inserção de um novo cliente
+   INSERT INTO clientes (nome, email) VALUES ('Paula Santos', 'paula@exemplo.com');
+
+   -- Atualização de um pedido existente
+   UPDATE pedidos SET status = 'Enviado' WHERE pedido_id = 101;
+
+   -- Verificação dos dados alterados
+   SELECT * FROM clientes;
+   ```
+
+3. **Confirmação ou Cancelamento da Transação**
+   - Após executar todas as operações necessárias, finalize a transação usando `COMMIT` para confirmar as alterações ou `ROLLBACK` para desfazer caso ocorra algum erro.
+   - **Exemplo de Código**:
+   
+   ```sql
+   COMMIT;
+   -- Caso algo dê errado:
+   -- ROLLBACK;
+   ```
+
+---
+
+## PARTE 2 – Transação com Procedure
+
+Nesta parte, você deve criar uma transação dentro de uma `procedure`, incluindo uma verificação de erro que possa disparar um `ROLLBACK` total ou parcial (utilizando `SAVEPOINT`).
+
+### Passos para Criar uma Transação com Procedure
+
+1. **Criar a Procedure**
+   - Crie uma `procedure` para realizar operações de modificação de dados e encapsular a lógica da transação.
+   - Inclua uma variável para capturar possíveis erros e realizar um `ROLLBACK` em caso de falha.
+   
+   **Exemplo de Código**:
+   
+   ```sql
+   DELIMITER //
+
+   CREATE PROCEDURE transacao_modificacao(
+       IN pedido_id INT,
+       IN novo_status VARCHAR(50)
+   )
+   BEGIN
+       DECLARE EXIT HANDLER FOR SQLEXCEPTION
+       BEGIN
+           ROLLBACK; -- Reverte todas as alterações em caso de erro
+           SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Erro na transação';
+       END;
+
+       -- Desabilitar autocommit
+       SET autocommit = 0;
+
+       START TRANSACTION;
+
+       -- Atualizar status do pedido
+       UPDATE pedidos SET status = novo_status WHERE pedido_id = pedido_id;
+
+       -- Verificar condição para criar SAVEPOINT
+       IF novo_status = 'Cancelado' THEN
+           SAVEPOINT antes_do_cancelamento;
+           -- Lógica adicional, se necessário
+       END IF;
+
+       COMMIT; -- Confirma as alterações se tudo estiver correto
+   END //
+
+   DELIMITER ;
+   ```
+
+2. **Chamar a Procedure**
+   - Utilize a `CALL` para executar a `procedure` com os parâmetros desejados.
+   - **Exemplo de Código**:
+   
+   ```sql
+   CALL transacao_modificacao(101, 'Em Preparação');
+   ```
+
+---
+
+## PARTE 3 – Backup e Recovery
+
+A última parte do desafio consiste em realizar o backup e recovery do banco de dados e-commerce. A ferramenta `mysqldump` será utilizada para realizar essas operações, permitindo a exportação de dados e sua recuperação futura.
+
+### Passos para Executar o Backup e Recovery
+
+1. **Backup do Banco de Dados**
+   - Utilize o `mysqldump` para realizar um backup completo do banco de dados e-commerce.
+   - **Exemplo de Código para Backup**:
+   
+   ```bash
+   mysqldump -u usuario -p nome_do_banco > backup_ecommerce.sql
+   ```
+
+   Isso irá criar um arquivo `.sql` contendo todos os dados e estrutura do banco de dados.
+
+2. **Incluir Recursos Adicionais no Backup**
+   - É possível realizar o backup de procedimentos, eventos e outras funções.
+   - **Exemplo de Código para Backup com Recursos Adicionais**:
+   
+   ```bash
+   mysqldump -u usuario -p nome_do_banco --routines --events > backup_completo_ecommerce.sql
+   ```
+
+3. **Restaurar o Backup (Recovery)**
+   - Para restaurar o banco de dados, utilize o arquivo `.sql` gerado pelo backup.
+   - **Exemplo de Código para Recovery**:
+   
+   ```bash
+   mysql -u usuario -p nome_do_banco < backup_ecommerce.sql
+   ```
+
+4. **Adicionar o Arquivo de Backup ao GitHub**
+   - Adicione o arquivo de backup ao repositório GitHub juntamente com os scripts SQL criados anteriormente.
+
+---
+
+## Conclusão
+
+Este projeto cobre o uso de transações no MySQL para modificação de dados, a criação de `procedures` para encapsular transações com lógica de verificação de erros e a realização de backup e recovery do banco de dados utilizando o `mysqldump`. A aplicação dessas práticas garante a integridade dos dados e a capacidade de recuperação em casos de falhas.
+
 ## Autor
 
 Este projeto foi desenvolvido como parte de um desafio de modelagem de banco de dados para e-commerce, seguindo diretrizes propostas por um expert em modelagem de dados.
