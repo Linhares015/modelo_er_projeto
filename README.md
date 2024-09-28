@@ -543,6 +543,193 @@ DELIMITER ;
 
 Neste projeto, trabalhamos com a criação de índices para otimizar consultas de um cenário "Company", levando em consideração o acesso e relevância dos dados. Além disso, desenvolvemos uma `procedure` flexível para manipulação de dados, que permite operações de `SELECT`, `UPDATE` e `DELETE` de forma dinâmica.
 
+# Projeto de Customização de Acessos com Views e Gatilhos para E-commerce
+
+## Parte 1 – Personalizando Acessos com Views
+
+Neste desafio, o objetivo é criar views (visões) para simplificar o acesso a informações importantes relacionadas aos empregados, departamentos e projetos. As views permitem a definição de regras de acesso personalizadas, melhorando a segurança e a usabilidade dos dados no banco.
+
+### Objetivos
+
+1. Criar views para os seguintes cenários:
+   - **Número de empregados por departamento e localidade**
+   - **Lista de departamentos e seus gerentes**
+   - **Projetos com maior número de empregados** (ordenados de forma decrescente)
+   - **Lista de projetos, departamentos e seus respectivos gerentes**
+   - **Identificar quais empregados possuem dependentes e se são gerentes**
+
+2. Definir permissões de acesso às views de acordo com o tipo de conta de usuário:
+   - **Usuário Gerente**: Acesso a todas as informações de empregados e departamentos.
+   - **Usuário Empregado**: Acesso restrito, sem permissão para visualizar dados relacionados aos departamentos ou gerentes.
+
+### Exemplos de Views
+
+<details>
+<summary>1. Número de empregados por departamento e localidade</summary>
+
+```sql
+CREATE VIEW vw_num_empregados_depto_localidade AS
+SELECT 
+    d.nome_departamento,
+    d.localidade,
+    COUNT(e.empregado_id) AS total_empregados
+FROM 
+    departamentos d
+JOIN 
+    empregados e ON d.departamento_id = e.departamento_id
+GROUP BY 
+    d.nome_departamento, d.localidade;
+```
+
+</details>
+
+<details>
+<summary>2. Lista de departamentos e seus gerentes</summary>
+
+```sql
+CREATE VIEW vw_deptos_gerentes AS
+SELECT 
+    d.nome_departamento,
+    e.nome AS nome_gerente
+FROM 
+    departamentos d
+JOIN 
+    empregados e ON d.gerente_id = e.empregado_id;
+```
+
+</details>
+
+<details>
+<summary>3. Projetos com maior número de empregados</summary>
+
+```sql
+CREATE VIEW vw_projetos_maior_num_empregados AS
+SELECT 
+    p.nome_projeto,
+    COUNT(pe.empregado_id) AS total_empregados
+FROM 
+    projetos p
+JOIN 
+    projeto_empregado pe ON p.projeto_id = pe.projeto_id
+GROUP BY 
+    p.nome_projeto
+ORDER BY 
+    total_empregados DESC;
+```
+
+</details>
+
+<details>
+<summary>4. Lista de projetos, departamentos e gerentes</summary>
+
+```sql
+CREATE VIEW vw_projetos_deptos_gerentes AS
+SELECT 
+    p.nome_projeto,
+    d.nome_departamento,
+    e.nome AS nome_gerente
+FROM 
+    projetos p
+JOIN 
+    departamentos d ON p.departamento_id = d.departamento_id
+JOIN 
+    empregados e ON d.gerente_id = e.empregado_id;
+```
+
+</details>
+
+<details>
+<summary>5. Empregados com dependentes e se são gerentes</summary>
+
+```sql
+CREATE VIEW vw_empregados_dependentes_gerentes AS
+SELECT 
+    e.nome AS nome_empregado,
+    COUNT(d.dependente_id) AS total_dependentes,
+    CASE 
+        WHEN e.gerente_id IS NOT NULL THEN 'Sim'
+        ELSE 'Não'
+    END AS eh_gerente
+FROM 
+    empregados e
+LEFT JOIN 
+    dependentes d ON e.empregado_id = d.empregado_id
+GROUP BY 
+    e.nome, e.gerente_id;
+```
+
+</details>
+
+### Definição de Permissões de Acesso
+
+- **Usuário Gerente**: Pode visualizar todas as views criadas.
+  ```sql
+  CREATE USER 'gerente'@'%' IDENTIFIED BY 'senha_gerente';
+  GRANT SELECT ON vw_num_empregados_depto_localidade TO 'gerente'@'%';
+  GRANT SELECT ON vw_deptos_gerentes TO 'gerente'@'%';
+  GRANT SELECT ON vw_projetos_maior_num_empregados TO 'gerente'@'%';
+  GRANT SELECT ON vw_projetos_deptos_gerentes TO 'gerente'@'%';
+  GRANT SELECT ON vw_empregados_dependentes_gerentes TO 'gerente'@'%';
+  ```
+
+- **Usuário Empregado**: Acesso limitado apenas a informações de empregados, sem permissão para acessar dados de departamentos ou gerentes.
+  ```sql
+  CREATE USER 'empregado'@'%' IDENTIFIED BY 'senha_empregado';
+  GRANT SELECT ON vw_empregados_dependentes_gerentes TO 'empregado'@'%';
+  ```
+
+---
+
+## Parte 2 – Criando Gatilhos para o Cenário de E-commerce
+
+Gatilhos (ou triggers) são utilizados para automatizar ações no banco de dados antes ou depois de operações de `INSERT`, `UPDATE`, ou `DELETE`. Neste projeto, serão criados triggers para tratar casos específicos de remoção e atualização de dados.
+
+### Objetivo dos Gatilhos
+
+1. **Triggers de Remoção (`BEFORE DELETE`)**: 
+   - Quando um usuário decide excluir sua conta, o trigger deve criar uma cópia dos dados antes da remoção para evitar a perda de informações importantes.
+   
+   <details>
+   <summary>Exemplo de Trigger para Remoção</summary>
+
+   ```sql
+   CREATE TRIGGER trg_before_delete_usuario
+   BEFORE DELETE ON usuarios
+   FOR EACH ROW
+   BEGIN
+       INSERT INTO usuarios_excluidos (usuario_id, nome, data_exclusao)
+       VALUES (OLD.usuario_id, OLD.nome, NOW());
+   END;
+   ```
+
+   </details>
+
+2. **Triggers de Atualização (`BEFORE UPDATE`)**: 
+   - Ao inserir novos colaboradores ou atualizar o salário base de um empregado, o trigger deve assegurar que o registro é atualizado corretamente, evitando inconsistências de dados.
+
+   <details>
+   <summary>Exemplo de Trigger para Atualização</summary>
+
+   ```sql
+   CREATE TRIGGER trg_before_update_empregado
+   BEFORE UPDATE ON empregados
+   FOR EACH ROW
+   BEGIN
+       -- Validar aumento salarial maior que 0
+       IF NEW.salario < 0 THEN
+           SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Salário inválido';
+       END IF;
+   END;
+   ```
+
+   </details>
+
+---
+
+## Conclusão
+
+Este projeto aborda a criação de views para facilitar o acesso a dados sensíveis e melhorar a performance de consultas, ao mesmo tempo em que define regras de acesso personalizadas para diferentes tipos de usuários. Além disso, são implementados gatilhos (triggers) para garantir a integridade dos dados durante operações de remoção e atualização.
+
 ## Autor
 
 Este projeto foi desenvolvido como parte de um desafio de modelagem de banco de dados para e-commerce, seguindo diretrizes propostas por um expert em modelagem de dados.
